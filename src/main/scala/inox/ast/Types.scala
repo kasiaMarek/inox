@@ -8,23 +8,23 @@ import scala.collection.mutable.{Map => MutableMap, Set => MutableSet}
 trait Types { self: Trees =>
 
   trait Typed extends Printable {
-    def getType(using Symbols): Type
-    def isTyped(using Symbols): Boolean = getType != Untyped
+    def getType(using s: Symbols, options: TypeComputeOptions = TypeComputeOptions.NoOptions): Type
+    def isTyped(using s: Symbols, options: TypeComputeOptions = TypeComputeOptions.NoOptions): Boolean = getType != Untyped
   }
 
   protected trait CachingTyped extends Typed {
-    private var cache: (Symbols, Type) = (null, null)
+    private var cache: ((Symbols, TypeComputeOptions), Type) = ((null, null), null)
 
-    final def getType(using s: Symbols): Type = {
-      val (symbols, tpe) = cache
-      if (s eq symbols) tpe else {
+    final def getType(using s: Symbols, options: TypeComputeOptions = TypeComputeOptions.NoOptions): Type = {
+      val ((symbols, opts), tpe) = cache
+      if ((s eq symbols) && options == opts) tpe else {
         val tpe = computeType
-        cache = s -> tpe
+        cache = (s, options) -> tpe
         tpe
       }
     }
 
-    protected def computeType(using Symbols): Type
+    protected def computeType(using Symbols, TypeComputeOptions): Type
   }
 
   protected def unveilUntyped(tpe: Type): Type = {
@@ -34,22 +34,22 @@ trait Types { self: Trees =>
 
   abstract class Type extends Tree with Typed {
     private var simple: Boolean = false
-    private var cache: (Symbols, Type) = (null, null)
+    private var cache: ((Symbols, TypeComputeOptions), Type) = ((null, null), null)
 
     private def setSimple(): this.type = { simple = true; this }
 
-    final def getType(using s: Symbols): Type = {
+    final def getType(using s: Symbols, options: TypeComputeOptions = TypeComputeOptions.NoOptions): Type = {
       if (simple) this else {
-        val (symbols, tpe) = cache
-        if (s eq symbols) tpe else {
+        val ((symbols, opts), tpe) = cache
+        if ((s eq symbols) && options == opts) tpe else {
           val tpe = computeType
-          cache = s -> tpe.setSimple()
+          cache = (s, options) -> tpe.setSimple()
           tpe
         }
       }
     }
 
-    protected def computeType(using Symbols): Type = {
+    protected def computeType(using Symbols, TypeComputeOptions): Type = {
       val NAryType(tps, recons) = this: @unchecked
       unveilUntyped(recons(tps.map(_.getType)))
     }
@@ -176,7 +176,7 @@ trait Types { self: Trees =>
   sealed case class PiType(params: Seq[ValDef], to: Type) extends Type with TypeNormalization {
     require(params.nonEmpty)
 
-    override protected def computeType(using Symbols): Type =
+    override protected def computeType(using Symbols, TypeComputeOptions): Type =
       unveilUntyped(FunctionType(params.map(_.getType), to.getType))
 
     override def hashCode: Int = 31 * code
@@ -189,7 +189,7 @@ trait Types { self: Trees =>
   sealed case class SigmaType(params: Seq[ValDef], to: Type) extends Type with TypeNormalization {
     require(params.nonEmpty)
 
-    override protected def computeType(using Symbols): Type =
+    override protected def computeType(using Symbols, TypeComputeOptions): Type =
       unveilUntyped(TupleType(params.map(_.getType) :+ to.getType))
 
     override def hashCode: Int = 53 * code
@@ -200,8 +200,10 @@ trait Types { self: Trees =>
   }
 
   sealed case class RefinementType(vd: ValDef, prop: Expr) extends Type with TypeNormalization {
-    override protected def computeType(using Symbols): Type =
-      checkParamType(prop, BooleanType(), vd.getType)
+    override protected def computeType(using s: Symbols, options: TypeComputeOptions): Type =
+      options match
+        case TypeComputeOptions.DropRefinement => checkParamType(prop, BooleanType(), vd.getType)
+        case TypeComputeOptions.NoOptions => RefinementType(vd.copy(tpe = checkParamType(prop, BooleanType(), vd.getType)), prop)
 
     override def hashCode: Int = 79 * code
     override def equals(that: Any): Boolean = that match {

@@ -45,7 +45,7 @@ trait Definitions { self: Trees =>
     def tpe: Type
     def flags: Seq[Flag]
 
-    def getType(using Symbols): Type = tpe.getType
+    def getType(using s: Symbols, options: TypeComputeOptions = TypeComputeOptions.NoOptions): Type = tpe.getType
 
     def to[A <: VariableSymbol](using ev: VariableConverter[A]): A = ev.convert(this)
 
@@ -114,6 +114,9 @@ trait Definitions { self: Trees =>
   type Symbols >: Null <: AbstractSymbols
 
   val NoSymbols: Symbols
+
+  enum TypeComputeOptions:
+    case DropRefinement, NoOptions
 
   /** Provides the class and function definitions of a program and lookups on them */
   trait AbstractSymbols
@@ -504,7 +507,7 @@ trait Definitions { self: Trees =>
     @inline def applied = FunctionInvocation(id, typeArgs, params map (_.toVariable))
 
     /** The (non-dependent) return type of this function definition */
-    def getType(using Symbols) = returnType.getType
+    def getType(using s: Symbols, options: TypeComputeOptions = TypeComputeOptions.NoOptions) = returnType.getType
 
     def copy(
       id: Identifier = this.id,
