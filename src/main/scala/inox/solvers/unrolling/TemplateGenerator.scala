@@ -251,6 +251,7 @@ trait TemplateGenerator { self: Templates =>
     //    id => expr && ... && expr
     var guardedExprs = Map[Variable, Seq[Expr]]()
     def storeGuarded(guardVar: Variable, expr: Expr): Unit = {
+      // (using options = TypeComputeOptions.DropRefinement)
       assert(expr.getType == BooleanType(), expr.asString + " is not of type Boolean. " + explainTyping(expr))
 
       val prev = guardedExprs.getOrElse(guardVar, Nil)

@@ -225,7 +225,11 @@ trait Definitions { self: Trees =>
     }
 
     protected def ensureWellFormedFunction(fd: FunDef) = {
-      typeCheck(fd.fullBody, fd.getType)
+      // typeCheck(fd.fullBody, fd.getType)
+      println(s"full body: $fd")
+      println(s"aaaa: ${fd.fullBody.getType(using options = TypeComputeOptions.DropRefinement)} vs ${fd.getType(using options = TypeComputeOptions.DropRefinement)}")
+      println(s"bb: ${fd.fullBody.getClass}")
+      typeCheck(fd.fullBody, fd.getType(using options = TypeComputeOptions.DropRefinement))
 
       if (!fd.getType.isTyped) throw NotWellFormedException(fd)
       if (!(fd.params forall (_.isTyped))) throw NotWellFormedException(fd)
