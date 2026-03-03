@@ -118,11 +118,16 @@ trait Expressions { self: Trees =>
     extends Expr with CachingTyped {
 
     override protected def computeType(using s: Symbols, options: TypeComputeOptions): Type = {
-      s.lookupFunction(id)
-        .filter(fd => tps.size == fd.tparams.size && args.size == fd.params.size)
-        .map(_.typed(tps))
-        .map(tfd => checkParamTypes(args, tfd.params.map(_.getType), tfd.getType))
+      import scala.util.chaining.scalaUtilChainingOps
+      // println(s"-- ${id.name} function")
+      val res =s.lookupFunction(id) //.map{ fd => fd.tap(fd => println(s"Found function definition: ${id.name}")); fd}
+        .filter(fd => tps.size == fd.tparams.size && args.size == fd.params.size) //.map(fd => {fd.tap(fd => println(s"Filter ok ${id.name}")); fd})
+        .map(_.typed(tps)) //.map(fd => {fd.tap(fd => println(s"Typed ok; ${fd.params}; ${id.name}")); fd})
+        //         -vvvvvvvvvvvvvvv- maybe `TypeComputeOptions` should be a param there too.
+        .map(tfd => checkParamTypes(args.map(_.getType), tfd.params.map(_.getType), tfd.getType)) //.map{fd => fd.tap(res => println(s"Result of type checking arguments is $res; ${id.name}")); fd}
         .getOrElse(Untyped)
+      //println(s"Result of checking FunctionInvocation of $id is $res")
+      res
     }
 
     def tfd(using s: Symbols): TypedFunDef = s.getFunction(id, tps)
@@ -303,14 +308,25 @@ trait Expressions { self: Trees =>
     def getConstructor(using s: Symbols) = s.getConstructor(id, tps)
 
     override protected def computeType(using s: Symbols, options: TypeComputeOptions): Type =
+      println(s"ADT: ${id.name}")
       s.lookupConstructor(id).flatMap { cons =>
+        println(s"Found def ${id.name}")
         s.lookupSort(cons.sort)
-          .filter(_.tparams.size == tps.size)
+          .filter(_.tparams.size == tps.size).map{ r => println(s"Passed filter ${id.name}"); r}
           .flatMap { sort =>
+            println(s"Sort $sort ${id.name}")
             sort.typed(tps).constructors
-              .find(_.id == id)
-              .filter(_.fields.size == args.size)
-              .map(tcons => checkParamTypes(args, tcons.fields.map(_.getType), ADTType(sort.id, tps)))
+              .find(_.id == id).map{ c => println(s"Found constructor ${id.name}"); c}
+              .filter(_.fields.size == args.size).map{ c => println(s"Passed filter 2 ${id.name}"); c}
+              .map{tcons =>
+                println(s"Constructor $tcons ${id.name}")
+                println(s"Args ${args} ${args.map(_.getClass())} ${id.name}")
+                println(s"Args ${args.map(_.getType)} ${id.name}")
+                println(s"Params ${tcons.fields.map(_.getType)} ${id.name}")
+                val res = checkParamTypes(args.map(_.getType), tcons.fields.map(_.getType), ADTType(sort.id, tps.map(_.getType)))
+                println(s"Res $res ${id.name}")
+                res
+              }
           }
       }.getOrElse(Untyped)
   }
