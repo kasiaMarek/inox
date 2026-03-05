@@ -904,11 +904,16 @@ trait Expressions { self: Trees =>
   /** $encodingof `Bag[base](elements)` */
   sealed case class FiniteBag(elements: Seq[(Expr, Expr)], base: Type) extends Expr with CachingTyped {
     override protected def computeType(using Symbols): Type =
+      // import scala.util.chaining.*
       checkParamTypes(
         elements.map(_._1.getType) ++ elements.map(_._2.getType),
         List.fill(elements.size)(base) ++ List.fill(elements.size)(IntegerType()),
         BagType(base)
       )
+      //.tap {
+      //   case Untyped => println(s"Invalid FiniteBag with base $base and elements ${elements.map(e => s"(${e._1.getType}, ${e._2.getType})").mkString(", ")}")
+      //   case _ =>
+      // }
   }
 
   /** $encodingof `bag + elem` */

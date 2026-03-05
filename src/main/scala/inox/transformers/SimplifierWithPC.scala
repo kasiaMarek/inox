@@ -71,6 +71,11 @@ trait SimplifierWithPC extends Transformer { self =>
       p
   })
 
+  private def getADTType(e: Typed)(using Symbols): ADTType = e.getType match {
+    case adt: ADTType => adt
+    case RefinementType(vd, _) => getADTType(vd)
+  }
+
   protected def isConstructor(e: Expr, id: Identifier, path: Env): Option[Boolean] = e match {
     case ADT(id2, _, _) => Some(id == id2)
     case _ => if (path `implies` IsConstructor(e, id)) {
@@ -78,7 +83,7 @@ trait SimplifierWithPC extends Transformer { self =>
     } else if (path `implies` Not(IsConstructor(e, id))) {
       Some(false)
     } else {
-      val adt @ ADTType(_, tps) = e.getType: @unchecked
+      val adt @ ADTType(_, tps) = getADTType(e)
       val sort = adt.getSort
       val cons = getConstructor(id, tps)
       val alts = (sort.constructors.toSet - cons).map(_.id)

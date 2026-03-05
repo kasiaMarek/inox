@@ -201,7 +201,7 @@ trait Types { self: Trees =>
 
   sealed case class RefinementType(vd: ValDef, prop: Expr) extends Type with TypeNormalization {
     override protected def computeType(using Symbols): Type =
-      checkParamType(prop, BooleanType(), vd.getType)
+      RefinementType(vd.copy(tpe = checkParamType(prop, BooleanType(), vd.getType)), prop)
 
     override def hashCode: Int = 79 * code
     override def equals(that: Any): Boolean = that match {
@@ -257,6 +257,7 @@ trait Types { self: Trees =>
 
   protected def getADTType(tpe: Typed, tpes: Typed*)(using Symbols): Type = tpe.getType match {
     case adt: ADTType => checkAllTypes(tpes, adt, adt)
+    case RefinementType(vd, _) => getADTType(vd.getType, tpes*)
     case _ => Untyped
   }
 
@@ -267,6 +268,8 @@ trait Types { self: Trees =>
 
   protected def getSetType(tpe: Typed, tpes: Typed*)(using Symbols): Type = tpe.getType match {
     case st: SetType => checkAllTypes(tpes, st, st)
+    // I don't think we should drop it here
+    case RefinementType(vd, _) => getSetType(vd.getType, tpes*)
     case _ => Untyped
   }
 

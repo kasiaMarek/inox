@@ -292,7 +292,7 @@ trait Z3Target extends SMTLIBTarget with SMTLIBDebugger {
   override protected def toSMT(e: Expr)(using bindings: Map[Identifier, Term]): Term = e match {
 
     case IsConstructor(e, id) if version >= Version(4, 6) =>
-      val tpe @ ADTType(_, tps) = e.getType: @unchecked
+      val tpe @ ADTType(_, tps) = getADTType(e)
       declareSort(tpe)
       val SSymbol(name) = testers.toB(ADTCons(id, tps))
       FunctionApplication(

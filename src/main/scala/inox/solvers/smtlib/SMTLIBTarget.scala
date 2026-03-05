@@ -263,6 +263,11 @@ trait SMTLIBTarget extends SMTLIBParser with Interruptible with ADTManagers {
     case _ => Seq(e)
   }
 
+  protected def getADTType(e: Typed)(using Symbols): ADTType = e.getType match {
+    case adt: ADTType => adt
+    case RefinementType(vd, _) => getADTType(vd)
+  }
+
   protected def toSMT(e: Expr)(using bindings: Map[Identifier, Term]): Term = {
     e match {
       case v @ Variable(id, tp, flags) =>
@@ -297,13 +302,13 @@ trait SMTLIBTarget extends SMTLIBParser with Interruptible with ADTManagers {
           newBody)
 
       case s @ ADTSelector(e, id) =>
-        val tpe @ ADTType(_, tps) = e.getType: @unchecked
+        val tpe @ ADTType(_, tps) = getADTType(e)
         declareSort(tpe)
         val selector = selectors.toB(ADTCons(s.constructor.id, tps) -> s.selectorIndex)
         FunctionApplication(selector, Seq(toSMT(e)))
 
       case i @ IsConstructor(e, id) =>
-        val tpe @ ADTType(_, tps) = e.getType: @unchecked
+        val tpe @ ADTType(_, tps) = getADTType(e)
         declareSort(tpe)
         val tester = testers.toB(ADTCons(id, tps))
         FunctionApplication(tester, Seq(toSMT(e)))

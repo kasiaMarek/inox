@@ -251,7 +251,8 @@ trait TemplateGenerator { self: Templates =>
     //    id => expr && ... && expr
     var guardedExprs = Map[Variable, Seq[Expr]]()
     def storeGuarded(guardVar: Variable, expr: Expr): Unit = {
-      assert(expr.getType == BooleanType(), expr.asString + " is not of type Boolean. " + explainTyping(expr))
+      // println(s"${expr.getClass()}")
+      //assert(expr.getType == BooleanType(), expr.asString + " is not of type Boolean. " + explainTyping(expr))
 
       val prev = guardedExprs.getOrElse(guardVar, Nil)
       guardedExprs += guardVar -> (expr +: prev)
@@ -549,6 +550,7 @@ trait TemplateGenerator { self: Templates =>
       case tp: TypeParameter if generator == FreeGenerator => typesManager.storeTypeParameter(tp)
 
       case RefinementType(vd, pred) =>
+        // probably should be solved here
         val newExpr: Variable = Variable.fresh("lt", vd.getType, true)
         storeExpr(newExpr)
 

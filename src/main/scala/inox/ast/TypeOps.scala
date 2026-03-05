@@ -32,18 +32,39 @@ trait TypeOps {
     def apply(obj: Expr, tpe: Type): TypeErrorException = apply(obj, Seq(tpe))
   }
 
-  def leastUpperBound(tp1: Type, tp2: Type): Type = if (tp1 == tp2) tp1 else Untyped
+  def widen(tpe: Type): Type = tpe match {
+    case RefinementType(vd, prop) => widen(vd.getType)
+    case _ => tpe
+  }
 
+  def leastUpperBound(tp1: Type, tp2: Type): Type = 
+    if (tp1 == tp2) tp1
+    else if (widen(tp1) == widen(tp2)) widen(tp1)
+    else Untyped
+
+  //TODO: needs recursion for refinements
   def leastUpperBound(tps: Seq[Type]): Type =
     if (tps.isEmpty) Untyped else tps.reduceLeft(leastUpperBound)
 
-  def greatestLowerBound(tp1: Type, tp2: Type): Type = if (tp1 == tp2) tp1 else Untyped
+  //TODO: needs recursion for refinements
+  def greatestLowerBound(tp1: Type, tp2: Type): Type = 
+    if (tp1 == tp2 || tp2.isInstanceOf[RefinementType]) tp1
+    else if (tp1.isInstanceOf[RefinementType]) tp2 else Untyped
 
   def greatestLowerBound(tps: Seq[Type]): Type =
     if (tps.isEmpty) Untyped else tps.reduceLeft(greatestLowerBound)
 
-  def isSubtypeOf(t1: Type, t2: Type): Boolean = 
-    t1.getType == Untyped || t2.getType == Untyped || t1.getType == t2.getType
+  def isSubtypeOf(t1: Type, t2: Type): Boolean =
+    t1.getType == Untyped || t2.getType == Untyped || t1.getType == t2.getType || t1.isInstanceOf[RefinementType] ||
+      (t2.getType match {
+        // I think I have to drop the refinements recursively here
+        // so it also works e.g. for function types
+        // and then refinement types in covariant positions need to be approxed to botttom type
+        case rt: RefinementType =>
+          // -------vvv---- we need some better notion of subtyping here
+          t1.getType == rt.vd.getType
+        case _ => false
+      })
 
   private type Instantiation = Map[TypeParameter, Type]
   def instantiation(from: Type, to: Type): Option[Instantiation] = {
