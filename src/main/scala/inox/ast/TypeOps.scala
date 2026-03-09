@@ -32,39 +32,75 @@ trait TypeOps {
     def apply(obj: Expr, tpe: Type): TypeErrorException = apply(obj, Seq(tpe))
   }
 
-  def widen(tpe: Type): Type = tpe match {
-    case RefinementType(vd, prop) => widen(vd.getType)
-    case _ => tpe
-  }
-
   def leastUpperBound(tp1: Type, tp2: Type): Type = 
-    if (tp1 == tp2) tp1
-    else if (widen(tp1) == widen(tp2)) widen(tp1)
-    else Untyped
+    bound(tp1, tp2, lower = false)
 
-  //TODO: needs recursion for refinements
   def leastUpperBound(tps: Seq[Type]): Type =
     if (tps.isEmpty) Untyped else tps.reduceLeft(leastUpperBound)
 
-  //TODO: needs recursion for refinements
-  def greatestLowerBound(tp1: Type, tp2: Type): Type = 
-    if (tp1 == tp2 || tp2.isInstanceOf[RefinementType]) tp1
-    else if (tp1.isInstanceOf[RefinementType]) tp2 else Untyped
+  def greatestLowerBound(tp1: Type, tp2: Type): Type =
+    bound(tp1, tp2, lower = true)
 
   def greatestLowerBound(tps: Seq[Type]): Type =
     if (tps.isEmpty) Untyped else tps.reduceLeft(greatestLowerBound)
 
+  private def bound(tp1: Type, tp2: Type, lower: Boolean): Type =
+    (tp1, tp2) match
+      case (RefinementType(vd1, p1), RefinementType(vd2, p2)) =>
+        val underlying = bound(vd1.getType, vd2.getType, lower)
+        val joinedProp = if (p1 == p2) p1 else if (lower) And(Seq(p1, p2)) else Or(Seq(p1, p2))
+        if (underlying == Untyped) Untyped else RefinementType(vd1.copy(tpe = underlying), joinedProp)
+      case (_, RefinementType(vd, prop)) if lower =>
+        val underlying = bound(tp1, vd.getType, lower)
+        if (underlying == Untyped) Untyped else RefinementType(vd.copy(tpe = underlying), prop)
+      case (RefinementType(vd, prop), _) if lower =>
+        val underlying = bound(vd.getType, tp2, lower)
+        if (underlying == Untyped) Untyped else RefinementType(vd.copy(tpe = underlying), prop)
+      case (_, RefinementType(vd, _)) => bound(tp1, vd.getType, lower)
+      case (RefinementType(vd, _), _) => bound(vd.getType, tp2, lower)
+      case (adt1: ADTType, adt2: ADTType) if adt1.id == adt2.id && adt1.tps.size == adt2.tps.size =>
+        val underlying = (adt1.tps zip adt2.tps).map { case (tp1, tp2) => bound(tp1, tp2, lower) }
+        if (underlying.exists(_ == Untyped)) Untyped else ADTType(adt1.id, underlying)
+      case (SetType(base1), SetType(base2)) => 
+        val underlying = bound(base1, base2, lower)
+        if (underlying == Untyped) Untyped else SetType(underlying)
+      case (FunctionType(from1, to1), FunctionType(from2, to2)) if from1.size == from2.size =>
+        val from = (from1 zip from2).map { case (tp1, tp2) => bound(tp2, tp1, !lower) }
+        val to = bound(to1, to2, lower)
+        if (from.exists(_ == Untyped) || to == Untyped) Untyped else FunctionType(from, to)
+      case (MapType(from1, to1), MapType(from2, to2)) =>
+        val from = bound(from1, from2, !lower)
+        val to = bound(to1, to2, lower)
+        if (from == Untyped || to == Untyped) Untyped else MapType(from, to)
+      case (BagType(base1), BagType(base2)) => 
+        val underlying = bound(base1, base2, lower)
+        if (underlying == Untyped) Untyped else BagType(underlying)
+      case (t1, t2) if t1 == t2 => t1
+      case _ => Untyped
+
+  def dropTopLevelTypeRefinement(tpe: Type): Type = tpe match {
+    case RefinementType(vd, _) => dropTopLevelTypeRefinement(vd.getType)
+    case _ => tpe
+  }
+
   def isSubtypeOf(t1: Type, t2: Type): Boolean =
-    t1.getType == Untyped || t2.getType == Untyped || t1.getType == t2.getType || t1.isInstanceOf[RefinementType] ||
-      (t2.getType match {
-        // I think I have to drop the refinements recursively here
-        // so it also works e.g. for function types
-        // and then refinement types in covariant positions need to be approxed to botttom type
-        case rt: RefinementType =>
-          // -------vvv---- we need some better notion of subtyping here
-          t1.getType == rt.vd.getType
-        case _ => false
-      })
+    (t1.getType, t2.getType) match
+      case (Untyped, _) => true
+      case (_, Untyped) => true
+      case (RefinementType(_, _), _) => true
+      case (_, RefinementType(vd, _)) => isSubtypeOf(t1, vd.getType)
+      case (adt1: ADTType, adt2: ADTType) => adt1.id == adt2.id && adt1.tps.size == adt2.tps.size &&
+        (adt1.tps zip adt2.tps).forall { case (tp1, tp2) => isSubtypeOf(tp1, tp2) }
+      case (TupleType(tps1), TupleType(tps2)) => tps1.size == tps2.size &&
+        (tps1 zip tps2).forall { case (tp1, tp2) => isSubtypeOf(tp1, tp2) }
+      case (SetType(base1), SetType(base2)) => isSubtypeOf(base1, base2)
+      case (FunctionType(from1, to1), FunctionType(from2, to2)) =>
+        from1.size == from2.size && (from1 zip from2).forall { case (tp1, tp2) => isSubtypeOf(tp2, tp1) } && isSubtypeOf(to1, to2)
+      case (MapType(from1, to1), MapType(from2, to2)) =>
+        isSubtypeOf(from2, from1) && isSubtypeOf(to1, to2)
+      case (BagType(base1), BagType(base2)) => isSubtypeOf(base1, base2)
+      case (t1, t2) if t1 == t2 => true
+      case _ => false
 
   private type Instantiation = Map[TypeParameter, Type]
   def instantiation(from: Type, to: Type): Option[Instantiation] = {
