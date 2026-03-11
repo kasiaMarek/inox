@@ -83,6 +83,19 @@ trait TypeOps {
     case _ => tpe
   }
 
+  // drop refinements
+  def erase(tpe: Type): Type = tpe.getType match {
+    case RefinementType(vd, _) => erase(vd.getType)
+    case adt: ADTType => adt.copy(tps = adt.tps.map(erase))
+    case SetType(base) => SetType(erase(base))
+    case FunctionType(from, to) => FunctionType(from.map(erase), erase(to))
+    case MapType(from, to) => MapType(erase(from), erase(to))
+    case BagType(base) => BagType(erase(base))
+    case SigmaType(params, to) => TupleType(params.map(p => erase(p.tpe)) :+ erase(to))
+    case PiType(params, to) => FunctionType(params.map(p => erase(p.tpe)), erase(to))
+    case other => other
+  }
+
   def isSubtypeOf(t1: Type, t2: Type): Boolean =
     (t1.getType, t2.getType) match
       case (Untyped, _) => true
@@ -99,6 +112,12 @@ trait TypeOps {
       case (MapType(from1, to1), MapType(from2, to2)) =>
         isSubtypeOf(from2, from1) && isSubtypeOf(to1, to2)
       case (BagType(base1), BagType(base2)) => isSubtypeOf(base1, base2)
+      case (PiType(params1, to1), PiType(params2, to2)) =>
+        params1.size == params2.size && (params1 zip params2).forall { case (tp1, tp2) => isSubtypeOf(tp2.tpe, tp1.tpe) } &&
+          isSubtypeOf(to1, to2)
+      case (SigmaType(params1, to1), SigmaType(params2, to2)) =>
+        params1.size == params2.size && (params1 zip params2).forall { case (tp1, tp2) => isSubtypeOf(tp1.tpe, tp2.tpe) } &&
+          isSubtypeOf(to1, to2)
       case (t1, t2) if t1 == t2 => true
       case _ => false
 

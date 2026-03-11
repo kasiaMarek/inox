@@ -353,7 +353,7 @@ trait TemplateGenerator { self: Templates =>
         rb
 
       case l @ Let(i, e, b) =>
-        val newExpr: Variable = Variable.fresh("lt", i.getType, true)
+        val newExpr: Variable = Variable.fresh("lt", erase(i.getType), true)
         storeExpr(newExpr)
         val re = rec(pathVar, e, None)
         storeGuarded(pathVar, Equals(newExpr, re))
